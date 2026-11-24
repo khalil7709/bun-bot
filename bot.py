@@ -5,11 +5,12 @@ app = Flask(__name__)
 def home():
     return "Bot is running!"
 threading.Thread(target=lambda: app.run(host='0.0.0.0', port=10000)).start()
+
 import telebot
-from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+from telebot.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 import os
 
-TOKEN = "9288341808:AAGxhUEAmSvGyJcUi6pwtCcOqCA1ZgAIzT0"
+TOKEN = os.environ.get("9288341808:AAGxhUEAmSvGyJcUi6pwtCcOqCA1ZgAIzT0")
 ADMIN_ID = 621360017
 bot = telebot.TeleBot(TOKEN)
 
@@ -65,17 +66,16 @@ def add_to(file, user_id):
         f.write(f"{user_id} ")
 
 def main_menu(user_id=None):
-    markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton("فيديو اليوم 🎬", callback_data="video"))
-    markup.add(InlineKeyboardButton("رصيدي 💰", callback_data="balance"))
-    markup.add(InlineKeyboardButton("ما هي عملة بون؟ 💎", callback_data="about"))
+    markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+    markup.add(KeyboardButton("فيديو اليوم 🎬"), KeyboardButton("رصيدي 💰"))
+    markup.add(KeyboardButton("ما هي عملة بون؟ 💎"))
     if user_id == ADMIN_ID:
-        markup.add(InlineKeyboardButton("➕ إضافة فيديو اليوم", callback_data="admin_add_video"))
+        markup.add(KeyboardButton("➕ إضافة فيديو اليوم"))
     return markup
 
-def back_button():
-    markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton("رجوع 🔙", callback_data="back"))
+def back_menu(user_id=None):
+    markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+    markup.add(KeyboardButton("رجوع 🔙"))
     return markup
 
 @bot.message_handler(commands=['start'])
@@ -100,74 +100,60 @@ def set_video(message):
     except:
         bot.reply_to(message, "ارسل كذا: /setvideo + رابط الفيديو")
 
-@bot.callback_query_handler(func=lambda call: True)
-def handle(call):
-    if call.data == "video":
-        markup = InlineKeyboardMarkup()
-        markup.add(InlineKeyboardButton("شاهد الفيديو على يوتيوب ▶️", callback_data="open_video"))
-        markup.add(InlineKeyboardButton("رجوع 🔙", callback_data="back"))
-        bot.send_message(call.message.chat.id, "فيديو اليوم 🎬\n\nاضغط الزر وشاهد الفيديو كامل، بعدها بيطلع لك زر شاهدت", reply_markup=markup)
+@bot.message_handler(func=lambda m: m.text == "فيديو اليوم 🎬")
+def video_today(message):
+    markup = InlineKeyboardMarkup()
+    markup.add(InlineKeyboardButton("شاهد الفيديو على يوتيوب ▶️", url=get_video() if get_video().startswith("http") else "https://youtube.com"))
+    bot.send_message(message.chat.id, "فيديو اليوم 🎬\n\nاضغط الزر وشاهد الفيديو كامل، بعدها بيطلع لك زر شاهدت", reply_markup=markup)
+    # نرسل زر شاهدت كزر ثابت
+    m2 = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+    m2.add(KeyboardButton("شاهدت الفيديو ✅"), KeyboardButton("رجوع 🔙"))
+    bot.send_message(message.chat.id, "بعد ما تخلص المشاهدة، اضغط شاهدت الفيديو 👇", reply_markup=m2)
 
-    elif call.data == "open_video":
-        add_to(OPENED_FILE, call.from_user.id)
-        video = get_video()
-        markup = InlineKeyboardMarkup()
-        markup.add(InlineKeyboardButton("شاهدت الفيديو ✅", callback_data="watched"))
-        markup.add(InlineKeyboardButton("رجوع 🔙", callback_data="back"))
-        bot.send_message(call.message.chat.id, f"هذا هو الفيديو 👇\n{video}\n\nشاهده للآخر، بعد ما تخلص ارجع هنا واضغط شاهدت الفيديو", reply_markup=markup)
+@bot.message_handler(func=lambda m: m.text == "شاهدت الفيديو ✅")
+def watched_btn(message):
+    user_id = message.from_user.id
+    if has_in(WATCHED_FILE, user_id):
+        bot.send_message(message.chat.id, "خلاص قد اخذت نقاط اليوم ✅", reply_markup=main_menu(user_id))
+    else:
+        add_points(user_id, 100)
+        add_to(WATCHED_FILE, user_id)
+        bot.send_message(message.chat.id, "حصلت على 100 نقطة 🎉", reply_markup=main_menu(user_id))
 
-    elif call.data == "watched":
-        if has_in(WATCHED_FILE, call.from_user.id):
-            bot.send_message(call.message.chat.id, "خلاص قد اخذت نقاط اليوم ✅", reply_markup=back_button())
-        elif not has_in(OPENED_FILE, call.from_user.id):
-            markup = InlineKeyboardMarkup()
-            markup.add(InlineKeyboardButton("شاهد الفيديو على يوتيوب ▶️", callback_data="open_video"))
-            bot.send_message(call.message.chat.id, "اولاً لازم تضغط شاهد على يوتيوب وتدخل الفيديو ⚠️", reply_markup=markup)
-        else:
-            add_points(call.from_user.id, 100)
-            add_to(WATCHED_FILE, call.from_user.id)
-            markup = InlineKeyboardMarkup()
-            markup.add(InlineKeyboardButton("رصيدي 💰", callback_data="balance"))
-            markup.add(InlineKeyboardButton("رجوع 🔙", callback_data="back"))
-            bot.send_message(call.message.chat.id, "حصلت على 100 نقطة 🎉", reply_markup=markup)
+@bot.message_handler(func=lambda m: m.text == "رصيدي 💰")
+def balance_btn(message):
+    p = get_points(message.from_user.id)
+    bot.send_message(message.chat.id, f"رصيدك 💰\n\n{p} نقطة من عملة بون 💎", reply_markup=main_menu(message.from_user.id))
 
-    elif call.data == "balance":
-        p = get_points(call.from_user.id)
-        bot.send_message(call.message.chat.id, f"رصيدك 💰\n\n{p} نقطة من عملة بون 💎", reply_markup=back_button())
-
-    elif call.data == "about":
-        text = """ما هي عملة بون؟ 💎☕️
+@bot.message_handler(func=lambda m: m.text == "ما هي عملة بون؟ 💎")
+def about_btn(message):
+    text = """ما هي عملة بون؟ 💎☕️
 
 بون BUN هي عملة رقمية مجتمعية، تابعة لشركة بون.
 
-عملة تم إطلاقها بهدف بناء مجتمع رقمي حقيقي، يكون فيه المستخدم شريكاً في النمو، وليس مجرد متابع.
-
-فكرة بون بسيطة وقوية في نفس الوقت:
 بدل ما تشاهد المحتوى بدون مقابل، أنت تكافأ على وقتك وتفاعلك داخل المنظومة.
 
 💰 كيف تحصل على عملة بون؟
 كل يوم تشاهد فيديو اليوم بشكل كامل، وتحصل على 100 بون.
-رصيدك يتراكم يوماً بعد يوم داخل حسابك، وكل نقطة مسجلة باسمك وبشكل شفاف.
 
 🌍 ما هو مستقبل بون؟
 تعمل شركة بون حالياً على تطوير منظومة متكاملة للعملة، تشمل المحفظة، والمتجر، وخدمات داخل المجتمع.
 
-وإن شاء الله، في المرحلة القادمة، سيتم إدراج عملة بون في المنصات العالمية، لتصبح عملة قابلة للتداول، وليست مجرد نقاط داخل بوت.
-
 بون ليست مشروعاً مؤقتاً، بون منظومة تُبنى خطوة بخطوة، بثبات واحترافية.
 
-أهلاً بك في بون.
-أهلاً بك في مستقبل العملات المجتمعية. 🚀"""
-        bot.send_message(call.message.chat.id, text, reply_markup=back_button())
+أهلاً بك في بون. 🚀"""
+    bot.send_message(message.chat.id, text, reply_markup=main_menu(message.from_user.id))
 
-    elif call.data == "back":
-        bot.send_message(call.message.chat.id, "اهلا بك في بون ☕️", reply_markup=main_menu(call.from_user.id))
+@bot.message_handler(func=lambda m: m.text == "رجوع 🔙")
+def back_btn(message):
+    bot.send_message(message.chat.id, "اهلا بك في بون ☕️", reply_markup=main_menu(message.from_user.id))
 
-    elif call.data == "admin_add_video":
-        if call.from_user.id != ADMIN_ID:
-            return
-        waiting_for_video.add(call.from_user.id)
-        bot.send_message(call.message.chat.id, "ارسل الآن رابط فيديو اليوم 👇")
+@bot.message_handler(func=lambda m: m.text == "➕ إضافة فيديو اليوم")
+def admin_add(message):
+    if message.from_user.id != ADMIN_ID:
+        return
+    waiting_for_video.add(message.from_user.id)
+    bot.send_message(message.chat.id, "ارسل الآن رابط فيديو اليوم 👇", reply_markup=back_menu())
 
 print("البوت شغال...")
 bot.polling()
